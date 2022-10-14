@@ -1,0 +1,5 @@
+subscriptionId=08691a3b-4820-4bff-a1cb-e721266d2b48
+ticket_id=EAA-589
+subscriptionName=ecad-od-dev-cel-bls
+app=one_dimension
+userPrincipalName=najim.abdelmoula@alpicloud.onmicrosoft.com
