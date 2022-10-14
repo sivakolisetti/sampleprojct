@@ -1,0 +1,87 @@
+#==================================================================================================================================
+#      FILE NAME: create-storage-account-using-tf.yml
+#      USAGE: Triggers when there are new inputs to input/user-input.tfvars and runs tasks required to create storage account 
+#      VERSION: 1.0
+#      AUTHOR: Sahana Gajanana Acharya
+#      DEPARTMENT: Platform Team
+#==================================================================================================================================
+
+name: create-storage-account
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - input/user-input.tfvars
+env:
+  JIRA_BASIC_AUTH: ${{ secrets.JIRA_BASIC_AUTH }}
+  SENDGRID_API_KEY: ${{secrets.SENDGRID_API_KEY}}
+  SENDGRID_TEMPLATE_ID: ${{ secrets.SENDGRID_TEMPLATE_ID}}
+
+jobs:
+  terraform:
+    name: 'Terraform'
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 'Clone repository'
+        uses: actions/checkout@v2
+
+      - name: 'Exporting data to env'
+        run: |
+          echo "`cat input/user-input.txt`" >> $GITHUB_ENV   
+
+      - name: 'Setup Terraform'
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: 1.2.1
+          terraform_wrapper: false
+      - name: 'Terraform Init'
+        uses: hashicorp/terraform-github-actions@master
+        with:
+          tf_actions_version: 1.2.1
+          tf_actions_subcommand: 'init'
+          tf_actions_working_dir: "./terraform"  
+          args: '-backend-config="subscription_id=${{ secrets.HUB_SUBSCRIPTION_ID }}" 
+                 -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" 
+                 -backend-config="resource_group_name=${{ secrets.AZURE_BE_RESOURCE_GROUP_NAME }}" 
+                 -backend-config="storage_account_name=${{ secrets.AZURE_BE_STORAGE_ACCOUNT_NAME }}"  
+                 -backend-config="container_name=${{ secrets.AZURE_BE_CONTAINER_NAME }}" 
+                 -backend-config="key=${{ env.subscriptionName }}/${{ env.app }}-create-storage-account/${{env.ticket_id}}.tfstate"'
+      - name: 'Terraform Validate'
+        uses: hashicorp/terraform-github-actions@master
+        with:
+          tf_actions_version: 1.2.1
+          tf_actions_subcommand: 'validate'
+          tf_actions_working_dir: "./terraform" 
+      
+      - name: 'Terraform Plan'
+        uses: hashicorp/terraform-github-actions@master
+        with:
+          tf_actions_version: 1.2.1
+          tf_actions_subcommand: 'plan'
+          tf_actions_working_dir: "./terraform"
+          args: '-var="hub_sub_id=${{ secrets.HUB_SUBSCRIPTION_ID }}" -var="hub_rg_dns_zone=${{ secrets.HUB_RG_NAME_DNS_ZONE }}" -var-file="../input/user-input.tfvars" -out=tfplan.binary'
+        env: 
+          ARM_SUBSCRIPTION_ID: ${{ env.subscriptionId }} 
+      
+      - name: 'Terraform Show'
+        run: |
+          cd ./terraform/
+          terraform show -json tfplan.binary > plan.json 
+      
+      - name: 'Setup Infracost'
+        uses: infracost/actions/setup@v2
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}  
+          currency: EUR
+          enable-dashboard: false
+      
+      - name: 'Generate Infracost cost estimate'
+        run: |
+          infracost breakdown --path=./terraform/plan.json
