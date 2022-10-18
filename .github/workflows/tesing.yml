@@ -1,0 +1,11 @@
+name: Preflight
+
+on:
+  workflow_dispatch:
+  
+jobs:
+  preflight-job:
+    name: Preflight Step
+    runs-on: ubuntu-latest
+    steps:
+      - run: env
